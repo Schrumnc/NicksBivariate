@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <title>US Income & Population Density Bivariate Map</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        body { margin: 0; padding: 0; }
+        #map { 
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 100%;
+            height: 100vh;
+        }
+        .legend {
+            background: rgba(255,255,255,0.8);
+            padding: 10px;
+            box-shadow: 0 0 15px rgba(0,0,0,0.2);
+            border-radius: 5px;
+            text-align: center;
+            line-height: 1.5;
+            font-size: 12px;
+        }
+        .legend-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 30px);
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+        .legend-cell {
+            width: 30px;
+            height: 30px;
+            border: 1px solid #000;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="Income.js"></script>
+    <script src="Density.js"></script>
+    <script>
+        // Initialize map
+        const map = L.map('map').setView([37.8, -96], 4);
+        
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        // Fixed break values
+        const incomeBreaks = [54203, 67804, 82095, 99858];
+        const densityBreaks = [1.264, 155.4, 464.3, 1189];
+
+        // Bivariate color scheme
+        const colors = {
+            '1-1': '#e8e8e8', '1-2': '#ace4e4', '1-3': '#5ac8c8',
+            '2-1': '#dfb0d6', '2-2': '#a5add3', '2-3': '#5698b9',
+            '3-1': '#be64ac', '3-2': '#8c62aa', '3-3': '#3b4994'
+        };
+
+        // Create merged data
+        const mergedData = {
+            type: "FeatureCollection",
+            features: statesData.features.map(incomeState => {
+                const densityState = Density.features.find(
+                    d => d.id === incomeState.id
+                );
+                return {
+                    type: "Feature",
+                    properties: {
+                        name: incomeState.properties.name,
+                        income: incomeState.properties.income,
+                        density: densityState ? densityState.properties.density : 0
+                    },
+                    geometry: incomeState.geometry
+                };
+            })
+        };
+
+        function getColor(income, density) {
+            let incomeClass = 1;
+            if (income > incomeBreaks[2]) {
+                incomeClass = 3;
+            } else if (income > incomeBreaks[1]) {
+                incomeClass = 2;
+            }
+
+            let densityClass = 1;
+            if (density > densityBreaks[2]) {
+                densityClass = 3;
+            } else if (density > densityBreaks[1]) {
+                densityClass = 2;
+            }
+
+            return colors[`${incomeClass}-${densityClass}`] || '#FFFFFF';
+        }
+
+        // Add choropleth layer
+        L.geoJson(mergedData, {
+            style: function(feature) {
+                return {
+                    fillColor: getColor(feature.properties.income, feature.properties.density),
+                    weight: 1,
+                    opacity: 1,
+                    color: 'white',
+                    fillOpacity: 0.7
+                };
+            },
+            onEachFeature: function(feature, layer) {
+                layer.bindTooltip(
+                    `<b>${feature.properties.name}</b><br>
+                    Income: $${feature.properties.income.toLocaleString()}<br>
+                    Density: ${feature.properties.density.toFixed(1)} people/km²`
+                );
+            }
+        }).addTo(map);
+
+        // Add legend
+        const legend = L.control({position: 'bottomright'});
+        legend.onAdd = function() {
+            const div = L.DomUtil.create('div', 'legend');
+            div.innerHTML = `
+                <h4>Income × Density</h4>
+                <div class="legend-grid">
+                    ${Object.entries(colors).map(([key, color]) => 
+                        `<div class="legend-cell" style="background:${color}"></div>`
+                    ).join('')}
+                </div>
+                <div><strong>Income Breaks ($):</strong></div>
+                <div>1: ≤ $${incomeBreaks[1].toLocaleString()}</div>
+                <div>2: $${(incomeBreaks[1] + 1).toLocaleString()} – $${incomeBreaks[2].toLocaleString()}</div>
+                <div>3: ≥ $${(incomeBreaks[2] + 1).toLocaleString()}</div>
+                <div><strong>Density Breaks (people/km²):</strong></div>
+                <div>1: ≤ ${densityBreaks[1]}</div>
+                <div>2: ${densityBreaks[1] + 0.1} – ${densityBreaks[2]}</div>
+                <div>3: ≥ ${densityBreaks[2] + 0.1}</div>
+                <div>Income: Low → High</div>
+                <div>Density: Low ↑ High</div>
+            `;
+            return div;
+        };
+        legend.addTo(map);
+    </script>
+</body>
+</html>
